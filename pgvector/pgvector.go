@@ -14,18 +14,18 @@ import (
 )
 
 type Store struct {
-	embedder  embeddings.Embedder
-	pool      *pgxpool.Pool
-	tableName string
-	//embeddingColumnName      string //name of the column whose value will be embedded
+	embedder                 embeddings.Embedder
+	pool                     *pgxpool.Pool
+	tableName                string
+	embeddingColumnName      string //name of the column whose value will be embedded
 	embeddingStoreColumnName string //name of the column in which embedded vector data will be stored
 
 	// attributes for similarity search
-	searchKey       string   // name of the column whose value needs to returned by search
-	queryAttributes []string //optional
+	//searchKey       string   // name of the column whose value needs to returned by search
+	QueryAttributes []string //optional
 }
 
-func New(pgConnectionString, tableName, embeddingStoreColumnName string, embedder embeddings.Embedder) (Store, error) {
+func New(pgConnectionString, tableName, embeddingStoreColumnName, embeddingColumnName string, embedder embeddings.Embedder) (Store, error) {
 	//connection string example - postgres://postgres:postgres@localhost/postgres
 	pool, err := pgxpool.New(context.Background(), pgConnectionString)
 
@@ -36,8 +36,8 @@ func New(pgConnectionString, tableName, embeddingStoreColumnName string, embedde
 	return Store{embedder: embedder,
 		tableName:                tableName,
 		embeddingStoreColumnName: embeddingStoreColumnName,
-		//embeddingColumnName:      embeddingColumnName,
-		pool: pool}, nil
+		embeddingColumnName:      embeddingColumnName,
+		pool:                     pool}, nil
 }
 
 var ErrEmbedderWrongNumberVectors = errors.New(
@@ -80,14 +80,12 @@ func (store Store) AddDocuments(ctx context.Context, docs []schema.Document, opt
 		metadatas = append(metadatas, metadata)
 	}
 
-	for i := range docs {
+	for i, doc := range docs {
 		embedding := convertVector(vectors[i])
 		pgVec := pgv.NewVector(embedding)
 		metadata := metadatas[i]
 
-		query, values := store.generateInsertQueryWithValues(pgVec, metadata)
-		//query, values := store.generateInsertQueryWithValues(pgVec, metadata, doc.PageContent)
-
+		query, values := store.generateInsertQueryWithValues(pgVec, metadata, doc.PageContent)
 		fmt.Println("generated query:", query)
 
 		_, err := store.pool.Exec(context.Background(), query, values...)
@@ -103,8 +101,7 @@ func (store Store) AddDocuments(ctx context.Context, docs []schema.Document, opt
 	return nil
 }
 
-func (store Store) generateInsertQueryWithValues(pgVec pgv.Vector, data map[string]any) (string, []any) {
-	//func (store Store) generateInsertQueryWithValues(pgVec pgv.Vector, data map[string]any, stringBeingEmbedded string) (string, []any) {
+func (store Store) generateInsertQueryWithValues(pgVec pgv.Vector, data map[string]any, stringBeingEmbedded string) (string, []any) {
 
 	// Generate column names and placeholders dynamically
 	var columns []string
@@ -112,7 +109,7 @@ func (store Store) generateInsertQueryWithValues(pgVec pgv.Vector, data map[stri
 	var values []any
 
 	data[store.embeddingStoreColumnName] = pgVec
-	//data[store.embeddingColumnName] = stringBeingEmbedded
+	data[store.embeddingColumnName] = stringBeingEmbedded
 
 	for column, value := range data {
 		columns = append(columns, column)
@@ -182,7 +179,7 @@ func (store Store) SimilaritySearch(ctx context.Context, searchString string, nu
 		metadata["similarity_score"] = vals[1]
 
 		for i := 2; i <= len(vals)-1; i++ {
-			metadata[store.queryAttributes[i-2]] = vals[i]
+			metadata[store.QueryAttributes[i-2]] = vals[i]
 			fmt.Println("metadta -", metadata)
 		}
 
@@ -194,13 +191,25 @@ func (store Store) SimilaritySearch(ctx context.Context, searchString string, nu
 	return docs, nil
 }
 
+const queryFormatWithQueryAttributes = "SELECT %s, 1 - (%s <=> $1) as similarity_score, %s FROM %s ORDER BY similarity_score DESC LIMIT %d"
+
+const queryFormat = "SELECT %s, 1 - (%s <=> $1) as similarity_score FROM %s ORDER BY similarity_score DESC LIMIT %d"
+
 func (store Store) generateSelectQuery(numDocuments int, threshold float64) string {
 
 	//"select question, answer from pgx_items where 1 - (q_embedding <=> $1) > 0 LIMIT 2"
 
 	//sqlQuery := fmt.Sprintf("SELECT %s, %s FROM %s WHERE 1 - (%s <=> $1) > %v LIMIT %d", store.searchKey, strings.Join(store.queryAttributes, ","), store.tableName, store.embeddingStoreColumnName, threshold, numDocuments)
 
-	sqlQuery := fmt.Sprintf("SELECT %s, 1 - (%s <=> $1) as similarity_score, %s FROM %s ORDER BY similarity_score DESC LIMIT %d", store.searchKey, store.embeddingStoreColumnName, strings.Join(store.queryAttributes, ","), store.tableName, numDocuments)
+	var sqlQuery string
+
+	if len(store.QueryAttributes) > 0 {
+
+		sqlQuery = fmt.Sprintf(queryFormatWithQueryAttributes, store.embeddingColumnName, store.embeddingStoreColumnName, strings.Join(store.QueryAttributes, ","), store.tableName, numDocuments)
+
+	} else {
+		sqlQuery = fmt.Sprintf(queryFormat, store.embeddingColumnName, store.embeddingStoreColumnName, store.tableName, numDocuments)
+	}
 
 	fmt.Println("search query -", sqlQuery)
 
