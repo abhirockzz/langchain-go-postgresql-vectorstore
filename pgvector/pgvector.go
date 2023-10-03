@@ -19,10 +19,11 @@ type Store struct {
 	tableName                string
 	embeddingColumnName      string //name of the column whose value will be embedded
 	embeddingStoreColumnName string //name of the column in which embedded vector data will be stored
+	saveMetadata             bool   //defaults to false. if true, the doc metatdata will be saved to postgresql as well. in that case the columns needs to exist in advance.
 
 	// attributes for similarity search
 	//searchKey       string   // name of the column whose value needs to returned by search
-	QueryAttributes []string //optional
+	QueryAttributes []string //optional - data for these columns will be added to resulting doc meta
 }
 
 func New(pgConnectionString, tableName, embeddingStoreColumnName, embeddingColumnName string, embedder embeddings.Embedder) (Store, error) {
@@ -37,7 +38,8 @@ func New(pgConnectionString, tableName, embeddingStoreColumnName, embeddingColum
 		tableName:                tableName,
 		embeddingStoreColumnName: embeddingStoreColumnName,
 		embeddingColumnName:      embeddingColumnName,
-		pool:                     pool}, nil
+		pool:                     pool,
+		saveMetadata:             false}, nil
 }
 
 var ErrEmbedderWrongNumberVectors = errors.New(
@@ -82,10 +84,14 @@ func (store Store) AddDocuments(ctx context.Context, docs []schema.Document, opt
 
 	for i, doc := range docs {
 		//embedding := convertVector(vectors[i])
-		pgVec := pgv.NewVector(vectors[i])
+		data := map[string]any{}
+		data[store.embeddingStoreColumnName] = pgv.NewVector(vectors[i])
+		data[store.embeddingColumnName] = doc.PageContent
+
+		//pgVec := pgv.NewVector(vectors[i])
 		metadata := metadatas[i]
 
-		query, values := store.generateInsertQueryWithValues(pgVec, metadata, doc.PageContent)
+		query, values := store.generateInsertQueryWithValues(data, metadata)
 		fmt.Println("generated query:", query)
 
 		_, err := store.pool.Exec(context.Background(), query, values...)
@@ -93,7 +99,7 @@ func (store Store) AddDocuments(ctx context.Context, docs []schema.Document, opt
 			return err
 		}
 
-		fmt.Println("added ")
+		fmt.Println("added doc")
 	}
 
 	fmt.Println("EXIT PgVectorStore/AddDocuments")
@@ -101,20 +107,30 @@ func (store Store) AddDocuments(ctx context.Context, docs []schema.Document, opt
 	return nil
 }
 
-func (store Store) generateInsertQueryWithValues(pgVec pgv.Vector, data map[string]any, stringBeingEmbedded string) (string, []any) {
+func (store Store) generateInsertQueryWithValues(data, metadata map[string]any) (string, []any) {
+
+	//func (store Store) generateInsertQueryWithValues(pgVec pgv.Vector, data, metadata map[string]any, stringBeingEmbedded string) (string, []any) {
 
 	// Generate column names and placeholders dynamically
 	var columns []string
 	var placeholders []string
 	var values []any
 
-	data[store.embeddingStoreColumnName] = pgVec
-	data[store.embeddingColumnName] = stringBeingEmbedded
+	//data[store.embeddingStoreColumnName] = pgVec
+	//data[store.embeddingColumnName] = stringBeingEmbedded
 
 	for column, value := range data {
 		columns = append(columns, column)
 		placeholders = append(placeholders, fmt.Sprintf("$%d", len(placeholders)+1))
 		values = append(values, value)
+	}
+
+	if store.saveMetadata {
+		for column, value := range metadata {
+			columns = append(columns, column)
+			placeholders = append(placeholders, fmt.Sprintf("$%d", len(placeholders)+1))
+			values = append(values, value)
+		}
 	}
 
 	// Construct the dynamic SQL query
