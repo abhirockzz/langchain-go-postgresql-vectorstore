@@ -14,10 +14,10 @@ import (
 )
 
 type Store struct {
-	embedder                 embeddings.Embedder
-	pool                     *pgxpool.Pool
-	tableName                string
-	embeddingColumnName      string //name of the column whose value will be embedded
+	embedder  embeddings.Embedder
+	pool      *pgxpool.Pool
+	tableName string
+	//embeddingColumnName      string //name of the column whose value will be embedded
 	embeddingStoreColumnName string //name of the column in which embedded vector data will be stored
 
 	// attributes for similarity search
@@ -33,7 +33,11 @@ func New(pgConnectionString, tableName, embeddingStoreColumnName string, embedde
 		return Store{}, err
 	}
 
-	return Store{embedder: embedder, tableName: tableName, embeddingStoreColumnName: embeddingStoreColumnName, pool: pool}, nil
+	return Store{embedder: embedder,
+		tableName:                tableName,
+		embeddingStoreColumnName: embeddingStoreColumnName,
+		//embeddingColumnName:      embeddingColumnName,
+		pool: pool}, nil
 }
 
 var ErrEmbedderWrongNumberVectors = errors.New(
@@ -76,12 +80,14 @@ func (store Store) AddDocuments(ctx context.Context, docs []schema.Document, opt
 		metadatas = append(metadatas, metadata)
 	}
 
-	for i, doc := range docs {
+	for i := range docs {
 		embedding := convertVector(vectors[i])
 		pgVec := pgv.NewVector(embedding)
 		metadata := metadatas[i]
 
-		query, values := store.generateInsertQueryWithValues(pgVec, metadata, doc.PageContent)
+		query, values := store.generateInsertQueryWithValues(pgVec, metadata)
+		//query, values := store.generateInsertQueryWithValues(pgVec, metadata, doc.PageContent)
+
 		fmt.Println("generated query:", query)
 
 		_, err := store.pool.Exec(context.Background(), query, values...)
@@ -97,7 +103,8 @@ func (store Store) AddDocuments(ctx context.Context, docs []schema.Document, opt
 	return nil
 }
 
-func (store Store) generateInsertQueryWithValues(pgVec pgv.Vector, data map[string]any, stringBeingEmbedded string) (string, []any) {
+func (store Store) generateInsertQueryWithValues(pgVec pgv.Vector, data map[string]any) (string, []any) {
+	//func (store Store) generateInsertQueryWithValues(pgVec pgv.Vector, data map[string]any, stringBeingEmbedded string) (string, []any) {
 
 	// Generate column names and placeholders dynamically
 	var columns []string
@@ -105,7 +112,7 @@ func (store Store) generateInsertQueryWithValues(pgVec pgv.Vector, data map[stri
 	var values []any
 
 	data[store.embeddingStoreColumnName] = pgVec
-	data[store.embeddingColumnName] = stringBeingEmbedded
+	//data[store.embeddingColumnName] = stringBeingEmbedded
 
 	for column, value := range data {
 		columns = append(columns, column)
