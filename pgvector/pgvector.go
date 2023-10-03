@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -14,8 +13,7 @@ import (
 	"github.com/tmc/langchaingo/vectorstores"
 )
 
-// PgVectorStore is a wrapper.
-type PgVectorStore struct {
+type Store struct {
 	embedder                 embeddings.Embedder
 	pool                     *pgxpool.Pool
 	tableName                string
@@ -27,22 +25,22 @@ type PgVectorStore struct {
 	queryAttributes []string //optional
 }
 
-func New(pgConnectionString, tableName, embeddingStoreColumnName string, embedder embeddings.Embedder) (PgVectorStore, error) {
+func New(pgConnectionString, tableName, embeddingStoreColumnName string, embedder embeddings.Embedder) (Store, error) {
 	//connection string example - postgres://postgres:postgres@localhost/postgres
 	pool, err := pgxpool.New(context.Background(), pgConnectionString)
 
 	if err != nil {
-		return PgVectorStore{}, err
+		return Store{}, err
 	}
 
-	return PgVectorStore{embedder: embedder, tableName: tableName, embeddingStoreColumnName: embeddingStoreColumnName, pool: pool}, nil
+	return Store{embedder: embedder, tableName: tableName, embeddingStoreColumnName: embeddingStoreColumnName, pool: pool}, nil
 }
 
 var ErrEmbedderWrongNumberVectors = errors.New(
 	"number of vectors from embedder does not match number of documents",
 )
 
-func (store PgVectorStore) AddDocuments(ctx context.Context, docs []schema.Document, options ...vectorstores.Option) error {
+func (store Store) AddDocuments(ctx context.Context, docs []schema.Document, options ...vectorstores.Option) error {
 	//opts := store.getOptions(options...)
 	//nameSpace := store.getNameSpace(opts)
 
@@ -99,7 +97,7 @@ func (store PgVectorStore) AddDocuments(ctx context.Context, docs []schema.Docum
 	return nil
 }
 
-func (store PgVectorStore) generateInsertQueryWithValues(pgVec pgv.Vector, data map[string]any, stringBeingEmbedded string) (string, []any) {
+func (store Store) generateInsertQueryWithValues(pgVec pgv.Vector, data map[string]any, stringBeingEmbedded string) (string, []any) {
 
 	// Generate column names and placeholders dynamically
 	var columns []string
@@ -126,7 +124,7 @@ func (store PgVectorStore) generateInsertQueryWithValues(pgVec pgv.Vector, data 
 	return sqlQuery, values
 }
 
-func (store PgVectorStore) SimilaritySearch(ctx context.Context, searchString string, numDocuments int, options ...vectorstores.Option) ([]schema.Document, error) {
+func (store Store) SimilaritySearch(ctx context.Context, searchString string, numDocuments int, options ...vectorstores.Option) ([]schema.Document, error) {
 
 	fmt.Println("similarity search for", searchString, "with max docs", numDocuments)
 
@@ -189,7 +187,7 @@ func (store PgVectorStore) SimilaritySearch(ctx context.Context, searchString st
 	return docs, nil
 }
 
-func (store PgVectorStore) generateSelectQuery(numDocuments int, threshold float64) string {
+func (store Store) generateSelectQuery(numDocuments int, threshold float64) string {
 
 	//"select question, answer from pgx_items where 1 - (q_embedding <=> $1) > 0 LIMIT 2"
 
@@ -198,22 +196,6 @@ func (store PgVectorStore) generateSelectQuery(numDocuments int, threshold float
 	sqlQuery := fmt.Sprintf("SELECT %s, 1 - (%s <=> $1) as similarity_score, %s FROM %s ORDER BY similarity_score DESC LIMIT %d", store.searchKey, store.embeddingStoreColumnName, strings.Join(store.queryAttributes, ","), store.tableName, numDocuments)
 
 	fmt.Println("search query -", sqlQuery)
-
-	return sqlQuery
-}
-
-func (store PgVectorStore) _generateSelectQuery(numDocuments int, threshold float64) string {
-
-	var attribsToQuery []string
-
-	//attribsToQuery = append(attribsToQuery, store.searchKey)
-	attribsToQuery = append(attribsToQuery, store.queryAttributes...)
-
-	sqlQuery := fmt.Sprintf("SELECT %s, 1 - (%s <=> $1) as similarity FROM %s ORDER BY similarity DESC LIMIT %d", strings.Join(attribsToQuery, ","), store.embeddingColumnName, store.tableName, numDocuments)
-
-	if threshold > 0 {
-		sqlQuery = sqlQuery + " WHERE similarity > " + strconv.FormatFloat(threshold, 'E', -1, 64)
-	}
 
 	return sqlQuery
 }
