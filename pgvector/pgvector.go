@@ -202,7 +202,8 @@ func (store Store) SimilaritySearch(ctx context.Context, searchString string, nu
 		fmt.Println("doc page content -", doc.PageContent)
 
 		//metadata["similarity_score"] = vals[1]
-		doc.Score = vals[1].(float32)
+		score := vals[1].(float64)
+		doc.Score = float32(score)
 
 		metadata := make(map[string]any)
 		for i := 2; i <= len(vals)-1; i++ {
