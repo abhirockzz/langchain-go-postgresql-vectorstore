@@ -14,19 +14,29 @@ import (
 )
 
 type Store struct {
-	embedder                 embeddings.Embedder
-	pool                     *pgxpool.Pool
-	tableName                string
-	embeddingColumnName      string //name of the column whose value will be embedded
-	embeddingStoreColumnName string //name of the column in which embedded vector data will be stored
-	saveMetadata             bool   //if true, the doc metatdata will be saved to postgresql as well. in that case the columns needs to exist in advance.
+	embedder embeddings.Embedder
+	pool     *pgxpool.Pool
+
+	// name of the table
+	tableName string
+
+	//name of the column in which text data will be stored. this will come from the "PageContent" of the langchain doc
+	textColumnName string
+
+	//name of the column in which embedded vector data will be stored. the data from "PageContent" of the langchain doc will go through the embedding (vector creation) process
+	embeddingStoreColumnName string
+
+	//if true, the langchain doc Metadata will be saved to postgresql as well. in that case the, column(s) needs to exist in advance
+	saveMetadata bool
 
 	// attributes for similarity search
 	//searchKey       string   // name of the column whose value needs to returned by search
-	QueryAttributes []string //optional - data for these columns will be added to resulting doc meta
+
+	//optional - data for these columns will be added to resulting langchain doc Metadata
+	QueryAttributes []string
 }
 
-func New(pgConnectionString, tableName, embeddingStoreColumnName, embeddingColumnName string, saveMetadata bool, embedder embeddings.Embedder) (Store, error) {
+func New(pgConnectionString, tableName, embeddingStoreColumnName, textColumnName string, saveMetadata bool, embedder embeddings.Embedder) (Store, error) {
 	//connection string example - postgres://postgres:postgres@localhost/postgres
 	pool, err := pgxpool.New(context.Background(), pgConnectionString)
 
@@ -37,7 +47,7 @@ func New(pgConnectionString, tableName, embeddingStoreColumnName, embeddingColum
 	return Store{embedder: embedder,
 		tableName:                tableName,
 		embeddingStoreColumnName: embeddingStoreColumnName,
-		embeddingColumnName:      embeddingColumnName,
+		textColumnName:           textColumnName,
 		pool:                     pool,
 		saveMetadata:             saveMetadata}, nil
 }
@@ -86,7 +96,7 @@ func (store Store) AddDocuments(ctx context.Context, docs []schema.Document, opt
 		//embedding := convertVector(vectors[i])
 		data := map[string]any{}
 		data[store.embeddingStoreColumnName] = pgv.NewVector(vectors[i])
-		data[store.embeddingColumnName] = doc.PageContent
+		data[store.textColumnName] = doc.PageContent
 
 		//pgVec := pgv.NewVector(vectors[i])
 		metadata := metadatas[i]
@@ -221,10 +231,10 @@ func (store Store) generateSelectQuery(numDocuments int, threshold float32) stri
 
 	if len(store.QueryAttributes) > 0 {
 
-		sqlQuery = fmt.Sprintf(queryFormatWithQueryAttributes, store.embeddingColumnName, store.embeddingStoreColumnName, strings.Join(store.QueryAttributes, ","), store.tableName, numDocuments)
+		sqlQuery = fmt.Sprintf(queryFormatWithQueryAttributes, store.textColumnName, store.embeddingStoreColumnName, strings.Join(store.QueryAttributes, ","), store.tableName, numDocuments)
 
 	} else {
-		sqlQuery = fmt.Sprintf(queryFormat, store.embeddingColumnName, store.embeddingStoreColumnName, store.tableName, numDocuments)
+		sqlQuery = fmt.Sprintf(queryFormat, store.textColumnName, store.embeddingStoreColumnName, store.tableName, numDocuments)
 	}
 
 	fmt.Println("search query -", sqlQuery)
