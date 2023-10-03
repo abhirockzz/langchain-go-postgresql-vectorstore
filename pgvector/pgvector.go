@@ -19,14 +19,14 @@ type Store struct {
 	tableName                string
 	embeddingColumnName      string //name of the column whose value will be embedded
 	embeddingStoreColumnName string //name of the column in which embedded vector data will be stored
-	saveMetadata             bool   //defaults to false. if true, the doc metatdata will be saved to postgresql as well. in that case the columns needs to exist in advance.
+	saveMetadata             bool   //if true, the doc metatdata will be saved to postgresql as well. in that case the columns needs to exist in advance.
 
 	// attributes for similarity search
 	//searchKey       string   // name of the column whose value needs to returned by search
 	QueryAttributes []string //optional - data for these columns will be added to resulting doc meta
 }
 
-func New(pgConnectionString, tableName, embeddingStoreColumnName, embeddingColumnName string, embedder embeddings.Embedder) (Store, error) {
+func New(pgConnectionString, tableName, embeddingStoreColumnName, embeddingColumnName string, saveMetadata bool, embedder embeddings.Embedder) (Store, error) {
 	//connection string example - postgres://postgres:postgres@localhost/postgres
 	pool, err := pgxpool.New(context.Background(), pgConnectionString)
 
@@ -39,7 +39,7 @@ func New(pgConnectionString, tableName, embeddingStoreColumnName, embeddingColum
 		embeddingStoreColumnName: embeddingStoreColumnName,
 		embeddingColumnName:      embeddingColumnName,
 		pool:                     pool,
-		saveMetadata:             false}, nil
+		saveMetadata:             saveMetadata}, nil
 }
 
 var ErrEmbedderWrongNumberVectors = errors.New(
