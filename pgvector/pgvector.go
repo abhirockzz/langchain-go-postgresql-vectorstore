@@ -81,8 +81,8 @@ func (store Store) AddDocuments(ctx context.Context, docs []schema.Document, opt
 	}
 
 	for i, doc := range docs {
-		embedding := convertVector(vectors[i])
-		pgVec := pgv.NewVector(embedding)
+		//embedding := convertVector(vectors[i])
+		pgVec := pgv.NewVector(vectors[i])
 		metadata := metadatas[i]
 
 		query, values := store.generateInsertQueryWithValues(pgVec, metadata, doc.PageContent)
@@ -146,7 +146,7 @@ func (store Store) SimilaritySearch(ctx context.Context, searchString string, nu
 
 	query := store.generateSelectQuery(numDocuments, opts.ScoreThreshold)
 
-	rows, err := store.pool.Query(context.Background(), query, pgv.NewVector(convertVector(vector)))
+	rows, err := store.pool.Query(context.Background(), query, pgv.NewVector(vector))
 
 	if err != nil {
 		return nil, err
@@ -195,7 +195,7 @@ const queryFormatWithQueryAttributes = "SELECT %s, 1 - (%s <=> $1) as similarity
 
 const queryFormat = "SELECT %s, 1 - (%s <=> $1) as similarity_score FROM %s ORDER BY similarity_score DESC LIMIT %d"
 
-func (store Store) generateSelectQuery(numDocuments int, threshold float64) string {
+func (store Store) generateSelectQuery(numDocuments int, threshold float32) string {
 
 	//"select question, answer from pgx_items where 1 - (q_embedding <=> $1) > 0 LIMIT 2"
 

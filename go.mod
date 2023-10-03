@@ -5,7 +5,7 @@ go 1.19
 require (
 	github.com/jackc/pgx/v5 v5.4.3
 	github.com/pgvector/pgvector-go v0.1.1
-	github.com/tmc/langchaingo v0.0.0-20230829032728-c85d3967da08
+	github.com/tmc/langchaingo v0.0.0-20230929160525-e16b77704b8d
 )
 
 require (
@@ -15,7 +15,7 @@ require (
 	github.com/jackc/pgservicefile v0.0.0-20221227161230-091c0ba34f0a // indirect
 	github.com/jackc/puddle/v2 v2.2.1 // indirect
 	github.com/pkoukk/tiktoken-go v0.1.2 // indirect
-	golang.org/x/crypto v0.9.0 // indirect
+	golang.org/x/crypto v0.11.0 // indirect
 	golang.org/x/sync v0.2.0 // indirect
-	golang.org/x/text v0.9.0 // indirect
+	golang.org/x/text v0.11.0 // indirect
 )
