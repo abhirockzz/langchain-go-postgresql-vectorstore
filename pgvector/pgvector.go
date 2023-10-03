@@ -201,12 +201,13 @@ func (store Store) SimilaritySearch(ctx context.Context, searchString string, nu
 
 		fmt.Println("doc page content -", doc.PageContent)
 
-		metadata := make(map[string]any)
-		metadata["similarity_score"] = vals[1]
+		//metadata["similarity_score"] = vals[1]
+		doc.Score = vals[1].(float32)
 
+		metadata := make(map[string]any)
 		for i := 2; i <= len(vals)-1; i++ {
 			metadata[store.QueryAttributes[i-2]] = vals[i]
-			fmt.Println("metadta -", metadata)
+			fmt.Println("metadata -", metadata)
 		}
 
 		doc.Metadata = metadata
