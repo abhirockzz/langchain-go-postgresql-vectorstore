@@ -170,6 +170,8 @@ func (store Store) SimilaritySearch(ctx context.Context, searchString string, nu
 		opt(&opts)
 	}
 
+	fmt.Println("generating query with threshold score", opts.ScoreThreshold)
+
 	query := store.generateSelectQuery(numDocuments, opts.ScoreThreshold)
 
 	rows, err := store.pool.Query(context.Background(), query, pgv.NewVector(vector))
@@ -219,11 +221,12 @@ func (store Store) SimilaritySearch(ctx context.Context, searchString string, nu
 	return docs, nil
 }
 
-const queryFormatWithQueryAttributes = "SELECT %s, 1 - (%s <=> $1) as similarity_score, %s FROM %s ORDER BY similarity_score DESC LIMIT %d"
+const queryFormatWithQueryAttributes = "SELECT %s, 1 - (%s <=> $1) as similarity_score, %s FROM %s WHERE 1 - (embedding <=> $1) > %v ORDER BY similarity_score DESC LIMIT %d"
 
-const queryFormat = "SELECT %s, 1 - (%s <=> $1) as similarity_score FROM %s ORDER BY similarity_score DESC LIMIT %d"
+const queryFormat = "SELECT %s, 1 - (%s <=> $1) as similarity_score FROM %s WHERE 1 - (embedding <=> $1) > %v ORDER BY similarity_score DESC LIMIT %d"
 
 func (store Store) generateSelectQuery(numDocuments int, threshold float32) string {
+	fmt.Println("threshold -", threshold)
 
 	//"select question, answer from pgx_items where 1 - (q_embedding <=> $1) > 0 LIMIT 2"
 
@@ -233,10 +236,10 @@ func (store Store) generateSelectQuery(numDocuments int, threshold float32) stri
 
 	if len(store.QueryAttributes) > 0 {
 
-		sqlQuery = fmt.Sprintf(queryFormatWithQueryAttributes, store.textColumnName, store.embeddingStoreColumnName, strings.Join(store.QueryAttributes, ","), store.tableName, numDocuments)
+		sqlQuery = fmt.Sprintf(queryFormatWithQueryAttributes, store.textColumnName, store.embeddingStoreColumnName, strings.Join(store.QueryAttributes, ","), store.tableName, threshold, numDocuments)
 
 	} else {
-		sqlQuery = fmt.Sprintf(queryFormat, store.textColumnName, store.embeddingStoreColumnName, store.tableName, numDocuments)
+		sqlQuery = fmt.Sprintf(queryFormat, store.textColumnName, store.embeddingStoreColumnName, store.tableName, threshold, numDocuments)
 	}
 
 	fmt.Println("search query -", sqlQuery)
