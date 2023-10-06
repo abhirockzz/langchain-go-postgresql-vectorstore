@@ -57,19 +57,10 @@ var ErrEmbedderWrongNumberVectors = errors.New(
 )
 
 func (store Store) AddDocuments(ctx context.Context, docs []schema.Document, options ...vectorstores.Option) error {
-	//opts := store.getOptions(options...)
-	//nameSpace := store.getNameSpace(opts)
-
-	fmt.Println("ENTER PgVectorStore/AddDocuments")
 
 	texts := make([]string, 0, len(docs))
 	for _, doc := range docs {
 		texts = append(texts, doc.PageContent)
-	}
-
-	fmt.Println("following words will be added to the vector store")
-	for _, text := range texts {
-		fmt.Println(text)
 	}
 
 	vectors, err := store.embedder.EmbedDocuments(ctx, texts)
@@ -93,41 +84,34 @@ func (store Store) AddDocuments(ctx context.Context, docs []schema.Document, opt
 	}
 
 	for i, doc := range docs {
-		//embedding := convertVector(vectors[i])
+
 		data := map[string]any{}
 		data[store.embeddingStoreColumnName] = pgv.NewVector(vectors[i])
 		data[store.textColumnName] = doc.PageContent
 
-		//pgVec := pgv.NewVector(vectors[i])
 		metadata := metadatas[i]
 
 		query, values := store.generateInsertQueryWithValues(data, metadata)
-		fmt.Println("generated query:", query)
+		//fmt.Println("generated query:", query)
 
 		_, err := store.pool.Exec(context.Background(), query, values...)
 		if err != nil {
 			return err
 		}
-
-		fmt.Println("added doc")
 	}
-
-	fmt.Println("EXIT PgVectorStore/AddDocuments")
 
 	return nil
 }
 
 func (store Store) generateInsertQueryWithValues(data, metadata map[string]any) (string, []any) {
 
-	//func (store Store) generateInsertQueryWithValues(pgVec pgv.Vector, data, metadata map[string]any, stringBeingEmbedded string) (string, []any) {
+	//INSERT INTO test_table (data, embedding) VALUES ($1, $2)
+	//INSERT INTO test_table (data, embedding, other_data) VALUES ($1, $2, $3)
 
-	// Generate column names and placeholders dynamically
+	// generate column names and placeholders dynamically
 	var columns []string
 	var placeholders []string
 	var values []any
-
-	//data[store.embeddingStoreColumnName] = pgVec
-	//data[store.embeddingColumnName] = stringBeingEmbedded
 
 	for column, value := range data {
 		columns = append(columns, column)
@@ -143,7 +127,6 @@ func (store Store) generateInsertQueryWithValues(data, metadata map[string]any) 
 		}
 	}
 
-	// Construct the dynamic SQL query
 	sqlQuery := fmt.Sprintf(
 		"INSERT INTO %s (%s) VALUES (%s)",
 		store.tableName,
@@ -156,21 +139,17 @@ func (store Store) generateInsertQueryWithValues(data, metadata map[string]any) 
 
 func (store Store) SimilaritySearch(ctx context.Context, searchString string, numDocuments int, options ...vectorstores.Option) ([]schema.Document, error) {
 
-	fmt.Println("similarity search for", searchString, "with max docs", numDocuments)
+	//fmt.Println("similarity search for", searchString, "with max docs", numDocuments)
 
 	vector, err := store.embedder.EmbedQuery(ctx, searchString)
 	if err != nil {
 		return nil, err
 	}
 
-	fmt.Println("query embeddeding done")
-
 	opts := vectorstores.Options{}
 	for _, opt := range options {
 		opt(&opts)
 	}
-
-	fmt.Println("generating query with threshold score", opts.ScoreThreshold)
 
 	query := store.generateSelectQuery(numDocuments, opts.ScoreThreshold)
 
@@ -180,37 +159,26 @@ func (store Store) SimilaritySearch(ctx context.Context, searchString string, nu
 		return nil, err
 	}
 
-	fmt.Println("found rows")
-
 	defer rows.Close()
 
 	docs := []schema.Document{}
 	doc := schema.Document{}
 
 	for rows.Next() {
-
-		fmt.Println("checking results")
-
 		vals, err := rows.Values()
 
 		if err != nil {
 			return nil, err
 		}
 
-		fmt.Println("no. vals in this row", len(vals))
-
 		doc.PageContent = vals[0].(string)
 
-		fmt.Println("doc page content -", doc.PageContent)
-
-		//metadata["similarity_score"] = vals[1]
 		score := vals[1].(float64)
 		doc.Score = float32(score)
 
 		metadata := make(map[string]any)
 		for i := 2; i <= len(vals)-1; i++ {
 			metadata[store.QueryAttributes[i-2]] = vals[i]
-			fmt.Println("metadata -", metadata)
 		}
 
 		doc.Metadata = metadata
@@ -226,11 +194,9 @@ const queryFormatWithQueryAttributes = "SELECT %s, 1 - (%s <=> $1) as similarity
 const queryFormat = "SELECT %s, 1 - (%s <=> $1) as similarity_score FROM %s WHERE 1 - (embedding <=> $1) > %v ORDER BY similarity_score DESC LIMIT %d"
 
 func (store Store) generateSelectQuery(numDocuments int, threshold float32) string {
-	fmt.Println("threshold -", threshold)
 
-	//"select question, answer from pgx_items where 1 - (q_embedding <=> $1) > 0 LIMIT 2"
-
-	//sqlQuery := fmt.Sprintf("SELECT %s, %s FROM %s WHERE 1 - (%s <=> $1) > %v LIMIT %d", store.searchKey, strings.Join(store.queryAttributes, ","), store.tableName, store.embeddingStoreColumnName, threshold, numDocuments)
+	//SELECT data, 1 - (embedding <=> $1) as similarity_score FROM test_table WHERE 1 - (embedding <=> $1) > 0.5 ORDER BY similarity_score DESC LIMIT 5
+	//SELECT data, 1 - (embedding <=> $1) as similarity_score, other_data FROM test_table WHERE 1 - (embedding <=> $1) > 0.5 ORDER BY similarity_score DESC LIMIT 5
 
 	var sqlQuery string
 
@@ -242,15 +208,7 @@ func (store Store) generateSelectQuery(numDocuments int, threshold float32) stri
 		sqlQuery = fmt.Sprintf(queryFormat, store.textColumnName, store.embeddingStoreColumnName, store.tableName, threshold, numDocuments)
 	}
 
-	fmt.Println("search query -", sqlQuery)
+	//fmt.Println("search query -", sqlQuery)
 
 	return sqlQuery
-}
-
-func convertVector(v []float64) []float32 {
-	v32 := make([]float32, len(v))
-	for i, f := range v {
-		v32[i] = float32(f)
-	}
-	return v32
 }
